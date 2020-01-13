@@ -28,7 +28,8 @@ class Plug:
 plugs = [
     Plug('tv', 27),
     Plug('amp', 23),
-    Plug('ghost', 22)
+    Plug('ghost', 22),
+    Plug('kodi', 24)
 ]
 s = sched.scheduler(time.time, time.sleep)
 
