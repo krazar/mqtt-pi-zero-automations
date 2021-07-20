@@ -1,35 +1,34 @@
+import signal
+import subprocess
 import os
 import sched, time
 import re
-import RPi.GPIO as GPIO
 import paho.mqtt.client as mqttClient
 
-GPIO.setmode(GPIO.BCM)
-GPIO.setwarnings(False)
 
 class Plug:
-    def __init__(self, name, id, state = False):
+    def __init__(self, name, cmd, state = False):
         self.name = name
-        self.id = id
+        self.cmd = cmd
         self.state = state
-        GPIO.setup(self.id, GPIO.OUT)
-        GPIO.output(self.id, not self.state)
 
     def enable(self):
         if not self.state:
-            GPIO.output(self.id, False)
+            my_env = os.environ.copy()
+            my_env["LD_LIBRARY_PATH"] = "/home/pi/mjpg-streamer/mjpg-streamer-experimental"
+            self.process = subprocess.Popen(self.cmd,stdout=subprocess.PIPE, 
+                       shell=True, preexec_fn=os.setsid, env=my_env)
             self.state = True
+
 
     def disable(self):
         if self.state:
-            GPIO.output(self.id, True)
+            os.killpg(os.getpgid(self.process.pid), signal.SIGTERM)
             self.state = False
 
 plugs = [
-    Plug('tv', 27),
-    Plug('amp', 23),
-    Plug('ghost', 22),
-    Plug('kodi', 24)
+    Plug('audio', '/opt/audiostream.py'),
+    Plug('video', '/home/pi/mjpg-streamer/mjpg-streamer-experimental/mjpg_streamer -i "input_raspicam.so -x 1024 -y 768 -rot 180" -o "output_http.so -w /home/pi/mjpg-streamer/mjpg-streamer-experimental/www"'),
 ]
 s = sched.scheduler(time.time, time.sleep)
 
@@ -39,7 +38,7 @@ def on_connect(client, userdata, flags, rc):
         print("Connected to broker")
         global Connected                #Use global variable
         Connected = True                #Signal connection
-        client.subscribe("cinema/+/command")
+        client.subscribe("babyphone/+/command")
         client.on_message = callbackMessage
         #s.enter(5, 1, scheduleSendStates, (s, client))
 
@@ -54,7 +53,7 @@ def callbackMessage(client, userdata, message):
     #print("message received " , str(message.payload.decode("utf-8")))
     topic = message.topic
     payload = str(message.payload.decode("utf-8"))
-    m = re.match(r"cinema/(.*)/command", topic)
+    m = re.match(r"babyphone/(.*)/command", topic)
     if m:
         name = m.group(1)
 
@@ -69,7 +68,7 @@ def callbackMessage(client, userdata, message):
             sendState(client, plug)
 
 def sendState(client, p):
-    topic = f'cinema/{p.name}/state'
+    topic = f'babyphone/{p.name}/state'
     payload = 1 if p.state else 0
     client.publish(topic, payload, 0, False)
     # print(f"state sent {p.name}")
